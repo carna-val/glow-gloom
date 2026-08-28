@@ -1,0 +1,331 @@
+/* ==========================================================================
+   GLOW / GLOOM — style.css
+   1. TOKENS   2. RESET   3. TYPE   4. TRANSITIONS   5. LANDING
+   ========================================================================== */
+
+:root{
+  --radius: 16px;
+  --ease: cubic-bezier(.65,0,.35,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --dur-fast: .25s;
+  --dur-med: .6s;
+  --dur-cover: .58s;           /* single source of truth for the page-wipe duration, read by JS too */
+  --font-ui: 'Space Mono', monospace;
+}
+
+/* --- GLOW theme tokens --------------------------------------------------
+   Toned down from a generic "AI neon" palette: one dominant signal color
+   (magenta) instead of three competing ones fighting for attention. Cyan
+   and lime survive only as small, rare accents (audio bars, one hover ring). */
+[data-theme="neon"]{
+  --bg: #0a0710;
+  --bg-elev: #120d20;
+  --fg: #f4eefc;
+  --muted: #a698c9;
+  --accent: #ff2bd6;
+  --accent-2: #00e6d8;
+  --accent-3: #c6ff2e;
+  --accent-4: #ff9a1f;
+  --font-display: 'Unbounded', sans-serif;
+  --font-body: 'Space Mono', monospace;
+  --grain-opacity: .045;
+}
+
+/* --- GLOOM theme tokens -------------------------------------------------- */
+[data-theme="horror"]{
+  --bg: #0a0c07;
+  --bg-elev: #12140e;
+  --fg: #dcd7c2;
+  --muted: #8d876c;
+  --accent: #5d6a45;
+  --accent-2: #8f7a4f;
+  --accent-3: #6e1620;
+  --accent-4: #cfc9a9;
+  --font-display: 'UnifrakturCook', serif;
+  --font-body: 'EB Garamond', serif;
+  --grain-opacity: .1;
+}
+
+/* -------------------------------------------------------------------- */
+/* 2. RESET                                                              */
+/* -------------------------------------------------------------------- */
+
+*,*::before,*::after{ box-sizing: border-box; }
+html{ color-scheme: dark; scroll-behavior: smooth; overflow-x: hidden; }
+body{
+  margin:0;
+  min-height:100svh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img{ max-width:100%; display:block; }
+a{ color: inherit; text-decoration:none; }
+button{ font-family: inherit; cursor:pointer; background:none; }
+::selection{ background: var(--accent); color:#000; }
+
+/* film-grain overlay, sits above everything, intensity per theme.
+   GPU-only cost: a single cached raster, moved with `transform`, never
+   repainted — safe to leave running everywhere. */
+body::after{
+  content:"";
+  position: fixed; inset:0;
+  pointer-events:none;
+  z-index: 9990;
+  opacity: var(--grain-opacity, .05);
+  mix-blend-mode: overlay;
+  will-change: transform;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 1.4s steps(3) infinite;
+}
+@keyframes grain{
+  0%{ transform:translate3d(0,0,0); }
+  33%{ transform:translate3d(-1%,1%,0); }
+  66%{ transform:translate3d(1%,-1%,0); }
+  100%{ transform:translate3d(0,0,0); }
+}
+
+@media (prefers-reduced-motion: reduce){
+  html{ scroll-behavior:auto; }
+  body::after{ animation:none; }
+  *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+}
+
+/* -------------------------------------------------------------------- */
+/* 3. TYPE                                                               */
+/* -------------------------------------------------------------------- */
+
+.eyebrow{
+  font-family: var(--font-ui);
+  font-size: .72rem;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1,h2,h3{ font-family: var(--font-display); line-height:1.02; margin:0; }
+
+/* -------------------------------------------------------------------- */
+/* 4. TRANSITIONS — the wipe between pages                              */
+/* -------------------------------------------------------------------- */
+/* Uses the destination page's own dark background tone rather than a
+   saturated accent — this is the fix for the "pink flash" bug: the old
+   version wiped in full-brightness magenta on every neon-bound click,
+   which reads as a flash rather than a considered cut. A near-black wipe
+   feels cinematic and never clashes with either theme. Timing is driven
+   entirely by `--dur-cover`, and the JS listens for the real
+   `transitionend` event instead of guessing a setTimeout — so navigation
+   can never happen mid-animation (that mismatch was the second half of
+   the "it just flashes" bug). */
+
+#transition-overlay{
+  position: fixed; inset:0;
+  z-index: 99999;
+  pointer-events:none;
+  background: var(--twipe, var(--bg));
+  clip-path: circle(0% at var(--tx,50%) var(--ty,50%));
+  opacity: 0;
+}
+#transition-overlay.run{
+  opacity: 1;
+  transition: clip-path var(--dur-cover) var(--ease), opacity var(--dur-fast) linear;
+  clip-path: circle(150% at var(--tx,50%) var(--ty,50%));
+}
+#transition-overlay.reveal{
+  opacity: 0;
+  transition: clip-path var(--dur-cover) var(--ease-out), opacity var(--dur-cover) linear;
+  clip-path: circle(0% at var(--tx,50%) var(--ty,50%));
+}
+
+body.page-enter{ animation: page-enter var(--dur-med) var(--ease-out) both; }
+@keyframes page-enter{
+  from{ opacity:0; transform: scale(1.01); }
+  to{ opacity:1; transform: scale(1); }
+}
+
+@supports (view-transition-name: none){
+  ::view-transition-old(root){ animation-duration: .3s; }
+  ::view-transition-new(root){ animation-duration: .4s; }
+}
+
+/* -------------------------------------------------------------------- */
+/* 5. LANDING PAGE (index.html)                                         */
+/* -------------------------------------------------------------------- */
+
+.landing{
+  position:relative;
+  min-height:100svh;
+  display:flex;
+  isolation:isolate;
+}
+
+.landing-title{
+  position:absolute;
+  top:6vh; left:50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  text-align:center;
+  pointer-events:none;
+  mix-blend-mode: difference;
+}
+.landing-title .mark{
+  font-family: var(--font-ui);
+  font-size: clamp(.65rem, 1.2vw, .8rem);
+  letter-spacing:.4em;
+  text-transform:uppercase;
+  color:#fff;
+  opacity:.85;
+  display:block;
+  margin-bottom:.6em;
+}
+.landing-title h1{
+  font-size: clamp(2.4rem, 8vw, 6.2rem);
+  color:#fff;
+  display:flex;
+  gap: .28em;
+}
+.landing-title h1 .half-neon{ font-family:'Unbounded',sans-serif; font-weight:800; }
+.landing-title h1 .half-horror{ font-family:'UnifrakturCook',serif; font-weight:700; }
+.landing-title .slash{ opacity:.5; font-family:'Unbounded',sans-serif; font-weight:300; }
+
+.portal{
+  position: relative;
+  flex: 1;
+  min-height: 100svh;
+  overflow: hidden;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  cursor: pointer;
+  transition: flex var(--dur-med) var(--ease);
+  background: var(--bg);
+}
+.landing:has(.portal:hover) .portal:not(:hover){ flex: .78; }
+.landing:has(.portal:hover) .portal:hover{ flex: 1.22; }
+
+.portal-bg{
+  position:absolute; inset:0;
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:2px;
+  filter: grayscale(.6) brightness(.4) contrast(1.05);
+  transition: filter var(--dur-med) var(--ease), transform 1.2s var(--ease-out);
+  transform: scale(1.08);
+}
+.portal:hover .portal-bg{ filter: grayscale(.15) brightness(.58) contrast(1.08); transform: scale(1.14); }
+.portal-bg img{ width:100%; height:100%; object-fit:cover; opacity:.9; }
+
+.portal::before{
+  content:"";
+  position:absolute; inset:0;
+  background: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.25) 40%, rgba(0,0,0,.75) 100%);
+  z-index:1;
+  transition: background var(--dur-med) var(--ease);
+}
+.portal--neon.portal::before{ background: linear-gradient(180deg, rgba(4,0,12,.55) 0%, rgba(4,0,12,.2) 40%, rgba(4,0,12,.82) 100%); }
+.portal--horror.portal::before{ background: linear-gradient(180deg, rgba(6,7,3,.6) 0%, rgba(6,7,3,.3) 40%, rgba(6,7,3,.88) 100%); }
+
+/* single restrained wash on hover instead of a two-color neon screen-blend */
+.portal--neon:hover::after{
+  content:"";
+  position:absolute; inset:0; z-index:1;
+  background: rgba(255,43,214,.09);
+  mix-blend-mode: screen;
+}
+.portal--horror:hover::after{
+  content:"";
+  position:absolute; inset:0; z-index:1;
+  box-shadow: inset 0 0 220px 60px rgba(0,0,0,.9);
+}
+
+.portal-content{
+  position:relative; z-index:2;
+  padding: 4rem 2.2rem 5.5rem;
+  text-align:center;
+  color:#fff;
+  width:100%;
+}
+.portal-content .eyebrow{ color:rgba(255,255,255,.65); margin-bottom:.5rem; }
+.portal-content h2{
+  font-size: clamp(2.6rem, 7vw, 5.4rem);
+  letter-spacing: -0.01em;
+}
+.portal--neon .portal-content h2{
+  font-family:'Unbounded',sans-serif; font-weight:800;
+  color:#fff;
+  text-shadow: 0 0 26px rgba(255,43,214,.55);
+}
+.portal--horror .portal-content h2{
+  font-family:'UnifrakturCook',serif; font-weight:700;
+  color:#dcd7c2;
+  text-shadow: 0 2px 24px rgba(0,0,0,.9);
+}
+.portal-content p{
+  max-width: 30ch; margin: 1rem auto 0;
+  font-family: var(--font-ui);
+  font-size: .85rem;
+  line-height:1.6;
+  color: rgba(255,255,255,.72);
+}
+.portal-cta{
+  display:inline-flex; align-items:center; gap:.6em;
+  margin-top: 1.8rem;
+  font-family: var(--font-ui);
+  font-size: .72rem;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  padding: .85em 1.6em;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.3);
+  transition: border-color var(--dur-fast), transform var(--dur-fast), background var(--dur-fast);
+}
+.portal--neon .portal-cta:hover{ border-color:#00e6d8; background: rgba(0,230,216,.08); transform: translateY(-2px); }
+.portal--horror .portal-cta:hover{ border-color:#6e1620; background: rgba(110,22,32,.25); transform: translateY(-2px); }
+.portal-cta svg{ width:1em; height:1em; transition: transform var(--dur-fast); }
+.portal:hover .portal-cta svg{ transform: translateX(4px); }
+
+/* --------------------------------------------------------------------
+   seam between the two portals — now a real element (`.seam`), driven
+   by JS in real time so it always sits exactly on the live boundary
+   between the two flex panels, including mid-hover-transition. The old
+   version was a CSS pseudo-element pinned at a static left:50%, which
+   drifted away from the real edge the instant one portal grew — that
+   mismatch was the "bizarre" bug.
+   -------------------------------------------------------------------- */
+.seam{
+  position:absolute; top:0; bottom:0; left:50%;
+  width:1px; z-index:5;
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,.5), transparent);
+  animation: seam-flicker 4.5s steps(2) infinite;
+  pointer-events:none;
+  will-change: left;
+}
+@keyframes seam-flicker{
+  0%,86%,100%{ opacity:.35; }
+  87%,90%{ opacity:.9; }
+  93%{ opacity:.1; }
+}
+
+footer.site-footer{
+  position:absolute; bottom: 1.3rem; left:0; right:0;
+  z-index: 6;
+  text-align:center;
+  font-family: var(--font-ui);
+  font-size:.68rem;
+  letter-spacing:.15em;
+  color: rgba(255,255,255,.4);
+  pointer-events:none;
+}
+
+@media (max-width: 760px){
+  .landing{ flex-direction:column; }
+  .landing:has(.portal:hover) .portal:not(:hover){ flex:1; }
+  .landing:has(.portal:hover) .portal:hover{ flex:1; }
+  .portal{ min-height: 50svh; }
+  .landing-title{ top:2.6vh; }
+  .landing-title h1{ gap:.18em; }
+  .portal-content{ padding-top: 7.5rem; }
+  .seam{ display:none; } /* a vertical seam has no meaning once the portals stack */
+}
